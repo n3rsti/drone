@@ -1,3 +1,5 @@
+## Link do tablicy: https://github.com/users/Iterb-exe/projects/1/views/1
+
 # Drone — lista komponentów technicznych
 
 ## 1. FC / mikrokontroler
