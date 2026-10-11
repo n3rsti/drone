@@ -272,6 +272,7 @@
 | Średnica otworów po gumowych dystansach | ok. 3 mm |
 | BEC 5 V | brak potwierdzenia; na zdjęciach brak oznaczonego padu 5V |
 | Dokumentacja oficjalna | brak jednoznacznej dokumentacji dla tej płytki |
+| Link | [Link](https://allegro.pl/oferta/mini-4w1-esc-60a-quadcopter-esc-bezszczotkowy-esc-mini-fc-stos-do-45a-17610700519) |
 
 ### Pady / złącza ESC
 
