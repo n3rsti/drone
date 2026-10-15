@@ -347,26 +347,80 @@
 
 ## 12. BEC / regulator 5 V
 
-### BEC 5 V 2–3 A, wejście 2–6S
+### XL1509 2A 40V Mini Step-Down DC-DC
 
-| Parametr | Wartość docelowa |
+| Parametr | Wartość |
 |---|---|
-| Typ | przetwornica DC-DC / BEC |
-| Wejście | 2–6S LiPo |
-| Zakres wejściowy wymagany dla 4S | minimum do 16.8 V |
-| Wyjście | 5 V |
-| Prąd wyjściowy | 2–3 A |
-| Dokumentacja | zależna od wybranego modelu |
+| Typ | Przetwornica DC-DC step-down (buck) |
+| Układ | XL1509 |
+| Napięcie wejściowe | 4.5–40 V |
+| Napięcie wyjściowe | Regulowane, ok. 1.27–37 V |
+| Napięcie ustawione w dronie | 5.0 V |
+| Maksymalny prąd wyjściowy | 2 A według sprzedawcy |
+| Częstotliwość przełączania | 150 kHz |
+| Regulacja napięcia | Potencjometr na płytce |
+| Zasilanie wejściowe | Akumulator LiPo 4S (14.8–16.8 V) |
+| Zasilane komponenty | STM32 BlackPill F411, Flywoo ELRS EL24P |
+| Link | [Mikrobot — XL1509 2A 40V](https://mikrobot.pl/Modul-przetwornica-Step-Down-XL1509-2A-40V-mini-obniza-napiecie-do-Arduino) |
 
-### Połączenia BEC
+### Połączenia XL1509
 
-| BEC | Połączenie |
+| XL1509 | Połączenie |
 |---|---|
-| IN+ | XT60 + / BAT+ |
-| IN- | XT60 - / BAT- |
-| OUT 5V | BlackPill 5V |
-| OUT 5V | odbiornik ELRS 5V |
-| OUT GND | wspólna masa |
+| IN+ | XT60 + / ESC BAT+ |
+| IN- | XT60 - / ESC BAT- |
+| OUT+ (5 V) | BlackPill 5V |
+| OUT+ (5 V) | Odbiornik ELRS 5V |
+| OUT- (GND) | BlackPill GND |
+| OUT- (GND) | Odbiornik ELRS GND |
+
+### Rozmieszczenie otworów
+
+Patrząc na płytkę od strony elementów, z zaciskami
+wejściowymi u góry i potencjometrem po lewej:
+
+- Górne dwa otwory po lewej: IN+
+- Górne dwa otwory po prawej: IN-
+- Dolne dwa otwory po lewej: OUT+
+- Dolne dwa otwory po prawej: OUT-
+
+Każda para otworów ma wspólne połączenie elektryczne.
+
+### Schemat zasilania
+
+```text
+Akumulator LiPo 4S
+    |
+    +---- (+) ---- ESC BAT+
+    |       |
+    |       +---- XL1509 IN+
+    |
+    +---- (-) ---- ESC BAT-
+            |
+            +---- XL1509 IN-
+
+XL1509 OUT+ (5V)
+    |
+    +---- STM32 BlackPill 5V
+    |
+    +---- Flywoo ELRS 5V
+
+XL1509 OUT- (GND)
+    |
+    +---- STM32 BlackPill GND
+    |
+    +---- Flywoo ELRS GND
+```
+
+### Uwagi montażowe
+
+- Przed podłączeniem STM32 i ELRS ustawić 5.0 V.
+- Sprawdzić napięcie i polaryzację multimetrem.
+- Zweryfikować stabilność napięcia pod obciążeniem.
+- Wszystkie urządzenia muszą mieć wspólną masę GND.
+- ESC jest zasilany bezpośrednio z LiPo 4S.
+- XL1509 zasila elektronikę sterującą, nie silniki.
+- Zapewnić izolację płytki i zabezpieczenie przed drganiami.
 
 ---
 
