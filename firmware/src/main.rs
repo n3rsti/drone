@@ -9,7 +9,7 @@ use stm32f4xx_hal::pac;
 // KONFIGURACJA TESTU
 // ==========================================
 
-const ENABLE_MOTOR_TEST: bool = true;
+const ENABLE_MOTOR_TEST: bool = false;
 
 const STOP: u16 = 0;
 const TEST_START_THROTTLE: u16 = 120;
@@ -18,7 +18,7 @@ const TEST_MAX_THROTTLE: u16 = 400;
 const INIT_FRAMES: u32 = 5000; // 10 sekund
 const RAMP_FRAMES: u32 = 2500; // 5 seconds at 500 Hz
 const TEST_FRAMES: u32 = 1500; // 3 seconds at the final throttle
-const PAUSE_FRAMES: u32 = 1500; // 3 seconds of STOP between motors
+const PAUSE_FRAMES: u32 = 1500; // 3 seconds of STOP between test cycles
 const MOTOR_COUNT: usize = 4;
 
 // STM32F411 HSI 16 MHz
@@ -185,8 +185,8 @@ fn init_timer() {
     // Enable all four channels, active high.
     write(TIM3 + 0x20, 0x1111);
 
-    // DMA writes directly to a selected CCR; timer DMA burst is unused.
-    write(TIM3 + 0x48, 0);
+    // DMA burst starts at CCR1 (register index 13) and writes CCR1..CCR4.
+    write(TIM3 + 0x48, 13 | (3 << 8));
 
     // Auto-reload preload
     write(TIM3 + 0x00, 1 << 7);
@@ -283,23 +283,16 @@ fn error_loop() -> ! {
 // TRANSMISJA DSHOT150
 // ==========================================
 
-fn send_dshot(motor: usize, throttle: u16) -> bool {
-    if motor >= MOTOR_COUNT {
-        emergency_stop();
-        return false;
-    }
-
+fn send_dshot(throttle: u16) -> bool {
     let packet = make_packet(throttle);
-    let ccr = TIM3 + 0x34 + 4 * motor as u32;
 
-    // Start with one LOW period and bit 0 in the selected CCR preload.
-    // Each hardware update activates the preload before DMA writes
-    // the next value: bits 1..15 followed by three LOW periods.
+    // Start with LOW in the active and preload registers. DMA supplies
+    // all 16 bits followed by three LOW periods.
 
-    let mut buffer = [0u16; 18];
+    let mut buffer = [0u16; 19 * MOTOR_COUNT];
 
-    for (bit, duty) in buffer.iter_mut().enumerate() {
-        *duty = pulse_width(packet, bit + 1);
+    for (bit, channels) in buffer.chunks_mut(MOTOR_COUNT).enumerate() {
+        channels.fill(pulse_width(packet, bit));
     }
 
     // Timer i DMA request OFF
@@ -324,14 +317,11 @@ fn send_dshot(motor: usize, throttle: u16) -> bool {
     // Wymus update
     write(TIM3 + 0x14, 1);
 
-    // Bit 0 becomes active only on the first timer overflow.
-    write(ccr, pulse_width(packet, 0) as u32);
-
     // Flagi timera
     write(TIM3 + 0x10, 0);
 
-    // Update requests feed the selected channel's CCR directly.
-    write(DMA_PAR, ccr);
+    // Each update request bursts four halfwords through DMAR to CCR1..CCR4.
+    write(DMA_PAR, TIM3 + 0x4C);
 
     // DMA memory = buffer
     write(DMA_M0AR, buffer.as_ptr() as u32);
@@ -339,8 +329,8 @@ fn send_dshot(motor: usize, throttle: u16) -> bool {
     // Ilosc transferow
     write(DMA_NDTR, buffer.len() as u32);
 
-    // Direct mode
-    write(DMA_FCR, 0);
+    // FIFO mode, full threshold: buffer timer bursts of four halfwords.
+    write(DMA_FCR, (1 << 2) | 3);
 
     // Channel 5
     // High priority
@@ -420,12 +410,7 @@ fn send_dshot(motor: usize, throttle: u16) -> bool {
 // WYSYLANIE WIELU RAMEK
 // ==========================================
 
-fn send_for(motor: usize, throttle: u16, frames: u32, blink: bool) -> bool {
-    if motor >= MOTOR_COUNT {
-        emergency_stop();
-        return false;
-    }
-
+fn send_for(throttle: u16, frames: u32, blink: bool) -> bool {
     for i in 0..frames {
         let start = cycles();
 
@@ -433,13 +418,8 @@ fn send_for(motor: usize, throttle: u16, frames: u32, blink: bool) -> bool {
             led((i / 250) % 2 == 0);
         }
 
-        // Send separate frames, avoiding timer DMA burst. Each motor still
-        // receives one frame per 2 ms; only the selected one gets throttle.
-        for channel in 0..MOTOR_COUNT {
-            let value = if channel == motor { throttle } else { STOP };
-            if !send_dshot(channel, value) {
-                return false;
-            }
+        if !send_dshot(throttle) {
+            return false;
         }
 
         // 500 ramek na sekunde
@@ -481,34 +461,34 @@ fn main() -> ! {
     // ETAP 1 - 10 sekund STOP
     // ======================================
 
-    if !send_for(0, STOP, INIT_FRAMES, true) {
+    if !send_for(STOP, INIT_FRAMES, true) {
         error_loop();
     }
 
     // ======================================
-    // STAGE 2 - test M1, M2, M3, M4 sequentially
+    // STAGE 2 - repeat the same test on all four motors simultaneously
     // ======================================
 
     if ENABLE_MOTOR_TEST {
-        for motor in 0..MOTOR_COUNT {
+        loop {
             led(true);
 
-            // Only the selected motor receives throttle; all others get STOP.
+            // All motors receive the same throttle.
             for frame in 0..RAMP_FRAMES {
                 let throttle = TEST_START_THROTTLE
                     + ((TEST_MAX_THROTTLE - TEST_START_THROTTLE) as u32 * frame / (RAMP_FRAMES - 1))
                         as u16;
 
-                if !send_for(motor, throttle, 1, false) {
+                if !send_for(throttle, 1, false) {
                     error_loop();
                 }
             }
 
-            if !send_for(motor, TEST_MAX_THROTTLE, TEST_FRAMES, false) {
+            if !send_for(TEST_MAX_THROTTLE, TEST_FRAMES, false) {
                 error_loop();
             }
 
-            if !send_for(0, STOP, PAUSE_FRAMES, true) {
+            if !send_for(STOP, PAUSE_FRAMES, true) {
                 error_loop();
             }
         }
@@ -519,7 +499,7 @@ fn main() -> ! {
     // ======================================
 
     loop {
-        if !send_for(0, STOP, 2500, true) {
+        if !send_for(STOP, 2500, true) {
             error_loop();
         }
     }
